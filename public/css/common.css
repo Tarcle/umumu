@@ -1,0 +1,106 @@
+* {
+    box-sizing: border-box;
+    font-family: 'NanumSquare';
+    outline: none;
+}
+input[type=password] {
+    font-family: 'NanumSquareRound';
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-width: 1200px;
+}
+a {
+    text-decoration: none;
+    color: inherit;
+}
+p {
+    margin: 0;
+}
+
+.container {
+    margin: 0 auto;
+    width: 1200px;
+}
+.container:after {
+    content: "";
+    display: block;
+    clear: both;
+}
+
+#gnb {
+    width: 100%;
+    height: 50px;
+    background: #6ACFE1;
+    color: #fff;
+}
+#gnb .left {
+    float: left;
+    height: 100%;
+}
+#gnb .left>a {
+    float: left;
+    padding: 5px 0;
+    height: 100%;
+}
+#gnb .left>a>img {
+    float: left;
+    width: auto;
+    height: 100%;
+}
+#gnb .left>#search-box {
+    float: left;
+    margin: 5px 0 5px 10px;
+    padding: 5px 0;
+    height: 40px;
+}
+#gnb .left>#search-box>input {
+    float: left;
+    padding: 3px 5px;
+    width: 300px;
+    height: 100%;
+    border: 0;
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+#gnb .left>#search-box>button {
+    float: left;
+    width: 50px;
+    height: 100%;
+    background: #23B0DB;
+    border: 0;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    line-height: 30px;
+    color: #fff;
+    cursor: pointer;
+}
+#gnb .right {
+    float: right;
+    height: 100%;
+}
+#gnb .right>.profile {
+    height: 50px;
+    line-height: 50px;
+    font-size: 18px;
+    font-weight: bold;
+}
+#gnb .right>.profile>a {
+    float: left;
+    margin: 0 5px;
+    padding: 0 10px;
+}
+#gnb .right>.profile>a:hover {
+    background: #23B0DB;
+}
+
+#footer {
+    float: left;
+    margin-top: 80px;
+    padding: 20px 0;
+    width: 100%;
+    background: #23B0DB;
+}

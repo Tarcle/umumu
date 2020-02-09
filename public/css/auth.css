@@ -1,0 +1,69 @@
+#login {
+    margin: 100px auto;
+    width: 400px;
+    font-size: 20px;
+}
+#login>p {
+    float: left;
+    margin: 0 0 5px;
+}
+#login>p>label {
+    float: left;
+    width: 100px;
+    line-height: 30px;
+}
+#login>p>input {
+    float: left;
+    width: 300px;
+    height: 30px;
+    line-height: 27px;
+    font-size: 20px;
+}
+#login>button {
+    width: 100%;
+    height: 30px;
+}
+
+#register {
+    margin: 100px auto;
+    width: 400px;
+    font-size: 20px;
+}
+#register>p {
+    float: left;
+    margin: 0 0 5px;
+}
+#register>p>label:first-child {
+    float: left;
+    width: 140px;
+    line-height: 30px;
+}
+#register>p>input[type=text],
+#register>p>input[type=password] {
+    width: 260px;
+    height: 30px;
+    line-height: 27px;
+    font-size: 20px;
+}
+#register>p>label:not(:first-child) {
+    float: left;
+    width: 130px;
+    text-align: center;
+}
+#register>p>select {
+    float: left;
+    height: 30px;
+}
+#register>p>#year {
+    width: 120px;
+}
+#register>p>#month,
+#register>p>#day {
+    margin-left: 10px;
+    width: 60px;
+}
+#register>button {
+    float: left;
+    width: 100%;
+    height: 30px;
+}
