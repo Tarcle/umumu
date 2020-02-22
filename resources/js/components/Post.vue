@@ -10,16 +10,20 @@
         </div>
         <div class="content">{{ post.body }}</div>
         <div class="btn">
-            <button class="like">좋아요</button>
-            <button class="comment" @click="load_comment(post.id)">댓글 {{ laravel.comment_count[post.id] ? laravel.comment_count[post.id] : 0 }}개</button>
+            <button class="like" :class="{ on: 0 }">좋아요</button>
+            <button class="comment" @click="load_comment(post.id)">댓글 {{ comment_count }}개</button>
             <button class="share">공유</button>
         </div>
-        <div is="comments" :post="post"></div>
-        <form v-if="comment_on" :action="'/write/comment/'+post.id" class="comment-write">
-            {{ laravel.csrf }}
-            <textarea name="comment" placeholder="댓글을 달아보세요."></textarea>
-            <button type="submit">댓글 달기</button>
-        </form>
+        <div class="comments" v-if="loading==2">
+            <div is="comment" v-for="(comment,i) in comments" :comment="comment" :key="i"></div>
+        </div>
+        <div class="comments" v-else-if="loading==1"><div style="text-align:center">불러오는 중</div></div>
+        <div v-if="loading>0" :action="'/write/comment/'+post.id" method="POST" class="comment-write">
+            <input type="hidden" name="_token" :value="laravel.csrfToken">
+            <input type="hidden" name="reply" :value="reply">
+            <textarea name="content" v-model="content" placeholder="댓글을 달아보세요." @keypress="(e)=>keypress_button(e,write_comment)"></textarea>
+            <button @click="write_comment">댓글 달기</button>
+        </div>
     </div>
 </template>
 
@@ -31,58 +35,45 @@
         data() {
             return {
                 laravel: laravel,
-                comment_on: false,
+                comment_count: 0,
+                comments: [],
+                reply: 0,
+                loading: 0, //0:not loading, 1:loading, 2:loaded
+                content: '',
             }
         },
         mounted() {
-            //
+            axios.post('/load/comment_count/'+this.post.id)
+                .then(res => {
+                    this.comment_count = res.data;
+                });
         },
         methods: {
-            load_comment: function (postid) {
-                this.comment_on = true;
+            load_comment: function () {
+                this.loading = 1;
+                axios.post('/load/comments/'+this.post.id)
+                    .then(res => {
+                        this.loading = 2;
+                        this.comments = res.data;
+                    })
+                    .catch(res => {
+                        alert('댓글을 불러오는 중 오류가 발생했습니다.');
+                    });
             },
-
-            display_datetime: function (date) {
-                var now = new Date();
-
-                var writeDay = new Date(date);
-                var minus;
-                if(now.getFullYear() > writeDay.getFullYear()) {
-                    minus = now.getFullYear()-writeDay.getFullYear();
-                    return minus+"년 전";
-                } else if(now.getMonth() > writeDay.getMonth()) {
-                    //년도가 같을 경우 달을 비교해서 출력
-                    minus = now.getMonth()-writeDay.getMonth();
-                    return minus+"달 전";
-                } else if(now.getDate() > writeDay.getDate()) {
-                    //같은 달일 경우 일을 계산
-                    minus = now.getDate()-writeDay.getDate();
-                    return minus+"일 전";
-                } else if(now.getDate() == writeDay.getDate()) {
-                    //당일인 경우에는
-                    var nowTime = now.getTime();
-                    var writeTime = writeDay.getTime();
-                    if(nowTime>writeTime) {
-                        //시간을 비교
-                        sec = parseInt(nowTime - writeTime) / 1000;
-                        day = parseInt(sec/60/60/24);
-                        sec = (sec - (day * 60 * 60 * 24));
-                        hour = parseInt(sec/60/60);
-                        sec = (sec - (hour*60*60));
-                        min = parseInt(sec/60);
-                        sec = parseInt(sec-(min*60));
-                        if(hour>0) {
-                            //몇시간전인지
-                            return hour+"시간 전";
-                        } else if(min>0) {
-                            //몇분전인지
-                            return min+"분 전";
-                        }else if (sec>0) {
-                            //몇초전인지 계산
-                            return sec+"초 전";
-                        }
-                    }
-                }
+            write_comment: function () {
+                var content = this.content;
+                this.content = '';
+                axios.post('write/comment/'+this.post.id, {
+                        _token: this.laravel.csrfToken,
+                        reply: this.reply,
+                        content: content,
+                    })
+                    .then(res => {
+                        this.load_comment();
+                    })
+                    .catch(res => {
+                        alert('댓글 작성에 실패했습니다.');
+                    });
             }
         }
     }

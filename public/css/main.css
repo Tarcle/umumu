@@ -160,6 +160,9 @@
 #newsfeed>.post>.btn>button:not(:first-child) {
     border-left: 1px solid #fff;
 }
+#newsfeed>.post>.btn>.like.on {
+    background: #23B0DB;
+}
 #newsfeed>.post>.comments {
     float: left;
     padding: 10px;

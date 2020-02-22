@@ -17,8 +17,8 @@
                     <div class="left">
                         <a href="/"><img src="/img/top_logo.png" alt=""></a>
                         <div id="search-box">
-                            <input type="text" name="search" placeholder="친구 검색" onkeypress="if(event.keyCode==13)this.nextElementSibling.click()">
-                            <button onclick="location.href='/search/'+document.getElementsByName('search')[0].value">검색</button>
+                            <input type="text" v-model="input_search" name="search" placeholder="친구 검색" @keypress="(e)=>{keypress_button(e,search)}">
+                            <button @click="search">검색</button>
                         </div>
                     </div>
                     <div class="right">
@@ -38,6 +38,7 @@
             @if(!Auth::check())
             <div id="footer">
                 <div class="container">
+                    <img src="/img/character.png" width="50%" alt="">
                     Portfolio by Jongchan Choi
                 </div>
             </div>

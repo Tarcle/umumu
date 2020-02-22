@@ -110,6 +110,7 @@ module.exports = __webpack_require__(/*! ./lib/axios */ "./node_modules/axios/li
 var utils = __webpack_require__(/*! ./../utils */ "./node_modules/axios/lib/utils.js");
 var settle = __webpack_require__(/*! ./../core/settle */ "./node_modules/axios/lib/core/settle.js");
 var buildURL = __webpack_require__(/*! ./../helpers/buildURL */ "./node_modules/axios/lib/helpers/buildURL.js");
+var buildFullPath = __webpack_require__(/*! ../core/buildFullPath */ "./node_modules/axios/lib/core/buildFullPath.js");
 var parseHeaders = __webpack_require__(/*! ./../helpers/parseHeaders */ "./node_modules/axios/lib/helpers/parseHeaders.js");
 var isURLSameOrigin = __webpack_require__(/*! ./../helpers/isURLSameOrigin */ "./node_modules/axios/lib/helpers/isURLSameOrigin.js");
 var createError = __webpack_require__(/*! ../core/createError */ "./node_modules/axios/lib/core/createError.js");
@@ -132,7 +133,8 @@ module.exports = function xhrAdapter(config) {
       requestHeaders.Authorization = 'Basic ' + btoa(username + ':' + password);
     }
 
-    request.open(config.method.toUpperCase(), buildURL(config.url, config.params, config.paramsSerializer), true);
+    var fullPath = buildFullPath(config.baseURL, config.url);
+    request.open(config.method.toUpperCase(), buildURL(fullPath, config.params, config.paramsSerializer), true);
 
     // Set the request timeout in MS
     request.timeout = config.timeout;
@@ -193,7 +195,11 @@ module.exports = function xhrAdapter(config) {
 
     // Handle timeout
     request.ontimeout = function handleTimeout() {
-      reject(createError('timeout of ' + config.timeout + 'ms exceeded', config, 'ECONNABORTED',
+      var timeoutErrorMessage = 'timeout of ' + config.timeout + 'ms exceeded';
+      if (config.timeoutErrorMessage) {
+        timeoutErrorMessage = config.timeoutErrorMessage;
+      }
+      reject(createError(timeoutErrorMessage, config, 'ECONNABORTED',
         request));
 
       // Clean up request
@@ -207,7 +213,7 @@ module.exports = function xhrAdapter(config) {
       var cookies = __webpack_require__(/*! ./../helpers/cookies */ "./node_modules/axios/lib/helpers/cookies.js");
 
       // Add xsrf header
-      var xsrfValue = (config.withCredentials || isURLSameOrigin(config.url)) && config.xsrfCookieName ?
+      var xsrfValue = (config.withCredentials || isURLSameOrigin(fullPath)) && config.xsrfCookieName ?
         cookies.read(config.xsrfCookieName) :
         undefined;
 
@@ -230,8 +236,8 @@ module.exports = function xhrAdapter(config) {
     }
 
     // Add withCredentials to request if needed
-    if (config.withCredentials) {
-      request.withCredentials = true;
+    if (!utils.isUndefined(config.withCredentials)) {
+      request.withCredentials = !!config.withCredentials;
     }
 
     // Add responseType to request if needed
@@ -510,7 +516,15 @@ Axios.prototype.request = function request(config) {
   }
 
   config = mergeConfig(this.defaults, config);
-  config.method = config.method ? config.method.toLowerCase() : 'get';
+
+  // Set config.method
+  if (config.method) {
+    config.method = config.method.toLowerCase();
+  } else if (this.defaults.method) {
+    config.method = this.defaults.method.toLowerCase();
+  } else {
+    config.method = 'get';
+  }
 
   // Hook up interceptors middleware
   var chain = [dispatchRequest, undefined];
@@ -627,6 +641,38 @@ module.exports = InterceptorManager;
 
 /***/ }),
 
+/***/ "./node_modules/axios/lib/core/buildFullPath.js":
+/*!******************************************************!*\
+  !*** ./node_modules/axios/lib/core/buildFullPath.js ***!
+  \******************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var isAbsoluteURL = __webpack_require__(/*! ../helpers/isAbsoluteURL */ "./node_modules/axios/lib/helpers/isAbsoluteURL.js");
+var combineURLs = __webpack_require__(/*! ../helpers/combineURLs */ "./node_modules/axios/lib/helpers/combineURLs.js");
+
+/**
+ * Creates a new URL by combining the baseURL with the requestedURL,
+ * only when the requestedURL is not already an absolute URL.
+ * If the requestURL is absolute, this function returns the requestedURL untouched.
+ *
+ * @param {string} baseURL The base URL
+ * @param {string} requestedURL Absolute or relative URL to combine
+ * @returns {string} The combined full path
+ */
+module.exports = function buildFullPath(baseURL, requestedURL) {
+  if (baseURL && !isAbsoluteURL(requestedURL)) {
+    return combineURLs(baseURL, requestedURL);
+  }
+  return requestedURL;
+};
+
+
+/***/ }),
+
 /***/ "./node_modules/axios/lib/core/createError.js":
 /*!****************************************************!*\
   !*** ./node_modules/axios/lib/core/createError.js ***!
@@ -671,8 +717,6 @@ var utils = __webpack_require__(/*! ./../utils */ "./node_modules/axios/lib/util
 var transformData = __webpack_require__(/*! ./transformData */ "./node_modules/axios/lib/core/transformData.js");
 var isCancel = __webpack_require__(/*! ../cancel/isCancel */ "./node_modules/axios/lib/cancel/isCancel.js");
 var defaults = __webpack_require__(/*! ../defaults */ "./node_modules/axios/lib/defaults.js");
-var isAbsoluteURL = __webpack_require__(/*! ./../helpers/isAbsoluteURL */ "./node_modules/axios/lib/helpers/isAbsoluteURL.js");
-var combineURLs = __webpack_require__(/*! ./../helpers/combineURLs */ "./node_modules/axios/lib/helpers/combineURLs.js");
 
 /**
  * Throws a `Cancel` if cancellation has been requested.
@@ -692,11 +736,6 @@ function throwIfCancellationRequested(config) {
 module.exports = function dispatchRequest(config) {
   throwIfCancellationRequested(config);
 
-  // Support baseURL config
-  if (config.baseURL && !isAbsoluteURL(config.url)) {
-    config.url = combineURLs(config.baseURL, config.url);
-  }
-
   // Ensure headers exist
   config.headers = config.headers || {};
 
@@ -711,7 +750,7 @@ module.exports = function dispatchRequest(config) {
   config.headers = utils.merge(
     config.headers.common || {},
     config.headers[config.method] || {},
-    config.headers || {}
+    config.headers
   );
 
   utils.forEach(
@@ -834,13 +873,23 @@ module.exports = function mergeConfig(config1, config2) {
   config2 = config2 || {};
   var config = {};
 
-  utils.forEach(['url', 'method', 'params', 'data'], function valueFromConfig2(prop) {
+  var valueFromConfig2Keys = ['url', 'method', 'params', 'data'];
+  var mergeDeepPropertiesKeys = ['headers', 'auth', 'proxy'];
+  var defaultToConfig2Keys = [
+    'baseURL', 'url', 'transformRequest', 'transformResponse', 'paramsSerializer',
+    'timeout', 'withCredentials', 'adapter', 'responseType', 'xsrfCookieName',
+    'xsrfHeaderName', 'onUploadProgress', 'onDownloadProgress',
+    'maxContentLength', 'validateStatus', 'maxRedirects', 'httpAgent',
+    'httpsAgent', 'cancelToken', 'socketPath'
+  ];
+
+  utils.forEach(valueFromConfig2Keys, function valueFromConfig2(prop) {
     if (typeof config2[prop] !== 'undefined') {
       config[prop] = config2[prop];
     }
   });
 
-  utils.forEach(['headers', 'auth', 'proxy'], function mergeDeepProperties(prop) {
+  utils.forEach(mergeDeepPropertiesKeys, function mergeDeepProperties(prop) {
     if (utils.isObject(config2[prop])) {
       config[prop] = utils.deepMerge(config1[prop], config2[prop]);
     } else if (typeof config2[prop] !== 'undefined') {
@@ -852,13 +901,25 @@ module.exports = function mergeConfig(config1, config2) {
     }
   });
 
-  utils.forEach([
-    'baseURL', 'transformRequest', 'transformResponse', 'paramsSerializer',
-    'timeout', 'withCredentials', 'adapter', 'responseType', 'xsrfCookieName',
-    'xsrfHeaderName', 'onUploadProgress', 'onDownloadProgress', 'maxContentLength',
-    'validateStatus', 'maxRedirects', 'httpAgent', 'httpsAgent', 'cancelToken',
-    'socketPath'
-  ], function defaultToConfig2(prop) {
+  utils.forEach(defaultToConfig2Keys, function defaultToConfig2(prop) {
+    if (typeof config2[prop] !== 'undefined') {
+      config[prop] = config2[prop];
+    } else if (typeof config1[prop] !== 'undefined') {
+      config[prop] = config1[prop];
+    }
+  });
+
+  var axiosKeys = valueFromConfig2Keys
+    .concat(mergeDeepPropertiesKeys)
+    .concat(defaultToConfig2Keys);
+
+  var otherKeys = Object
+    .keys(config2)
+    .filter(function filterAxiosKeys(key) {
+      return axiosKeys.indexOf(key) === -1;
+    });
+
+  utils.forEach(otherKeys, function otherKeysDefaultToConfig2(prop) {
     if (typeof config2[prop] !== 'undefined') {
       config[prop] = config2[prop];
     } else if (typeof config1[prop] !== 'undefined') {
@@ -966,13 +1027,12 @@ function setContentTypeIfUnset(headers, value) {
 
 function getDefaultAdapter() {
   var adapter;
-  // Only Node.JS has a process variable that is of [[Class]] process
-  if (typeof process !== 'undefined' && Object.prototype.toString.call(process) === '[object process]') {
-    // For node use HTTP adapter
-    adapter = __webpack_require__(/*! ./adapters/http */ "./node_modules/axios/lib/adapters/xhr.js");
-  } else if (typeof XMLHttpRequest !== 'undefined') {
+  if (typeof XMLHttpRequest !== 'undefined') {
     // For browsers use XHR adapter
     adapter = __webpack_require__(/*! ./adapters/xhr */ "./node_modules/axios/lib/adapters/xhr.js");
+  } else if (typeof process !== 'undefined' && Object.prototype.toString.call(process) === '[object process]') {
+    // For node use HTTP adapter
+    adapter = __webpack_require__(/*! ./adapters/http */ "./node_modules/axios/lib/adapters/xhr.js");
   }
   return adapter;
 }
@@ -1494,7 +1554,6 @@ module.exports = function spread(callback) {
 
 
 var bind = __webpack_require__(/*! ./helpers/bind */ "./node_modules/axios/lib/helpers/bind.js");
-var isBuffer = __webpack_require__(/*! is-buffer */ "./node_modules/is-buffer/index.js");
 
 /*global toString:true*/
 
@@ -1510,6 +1569,27 @@ var toString = Object.prototype.toString;
  */
 function isArray(val) {
   return toString.call(val) === '[object Array]';
+}
+
+/**
+ * Determine if a value is undefined
+ *
+ * @param {Object} val The value to test
+ * @returns {boolean} True if the value is undefined, otherwise false
+ */
+function isUndefined(val) {
+  return typeof val === 'undefined';
+}
+
+/**
+ * Determine if a value is a Buffer
+ *
+ * @param {Object} val The value to test
+ * @returns {boolean} True if value is a Buffer, otherwise false
+ */
+function isBuffer(val) {
+  return val !== null && !isUndefined(val) && val.constructor !== null && !isUndefined(val.constructor)
+    && typeof val.constructor.isBuffer === 'function' && val.constructor.isBuffer(val);
 }
 
 /**
@@ -1566,16 +1646,6 @@ function isString(val) {
  */
 function isNumber(val) {
   return typeof val === 'number';
-}
-
-/**
- * Determine if a value is undefined
- *
- * @param {Object} val The value to test
- * @returns {boolean} True if the value is undefined, otherwise false
- */
-function isUndefined(val) {
-  return typeof val === 'undefined';
 }
 
 /**
@@ -1849,50 +1919,14 @@ __webpack_require__.r(__webpack_exports__);
 //
 //
 //
-//
-//
 /* harmony default export */ __webpack_exports__["default"] = ({
-  props: ['post'],
+  props: ['comment'],
   data: function data() {
     return {
-      laravel: laravel,
-      comments: []
+      laravel: laravel
     };
   },
   mounted: function mounted() {//
-  }
-});
-
-/***/ }),
-
-/***/ "./node_modules/babel-loader/lib/index.js?!./node_modules/vue-loader/lib/index.js?!./resources/js/components/ExampleComponent.vue?vue&type=script&lang=js&":
-/*!***************************************************************************************************************************************************************************!*\
-  !*** ./node_modules/babel-loader/lib??ref--4-0!./node_modules/vue-loader/lib??vue-loader-options!./resources/js/components/ExampleComponent.vue?vue&type=script&lang=js& ***!
-  \***************************************************************************************************************************************************************************/
-/*! exports provided: default */
-/***/ (function(module, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-/* harmony default export */ __webpack_exports__["default"] = ({
-  mounted: function mounted() {
-    console.log('Component mounted.');
   }
 });
 
@@ -1932,63 +1966,56 @@ __webpack_require__.r(__webpack_exports__);
 //
 //
 //
+//
+//
+//
+//
 /* harmony default export */ __webpack_exports__["default"] = ({
   props: ['post'],
   data: function data() {
     return {
       laravel: laravel,
-      comment_on: false
+      comment_count: 0,
+      comments: [],
+      reply: 0,
+      loading: 0,
+      //0:not loading, 1:loading, 2:loaded
+      content: ''
     };
   },
-  mounted: function mounted() {//
+  mounted: function mounted() {
+    var _this = this;
+
+    axios.post('/load/comment_count/' + this.post.id).then(function (res) {
+      _this.comment_count = res.data;
+    });
   },
   methods: {
-    load_comment: function load_comment(postid) {
-      this.comment_on = true;
+    load_comment: function load_comment() {
+      var _this2 = this;
+
+      this.loading = 1;
+      axios.post('/load/comments/' + this.post.id).then(function (res) {
+        _this2.loading = 2;
+        _this2.comments = res.data;
+      })["catch"](function (res) {
+        alert('댓글을 불러오는 중 오류가 발생했습니다.');
+      });
     },
-    display_datetime: function display_datetime(date) {
-      var now = new Date();
-      var writeDay = new Date(date);
-      var minus;
+    write_comment: function write_comment() {
+      var _this3 = this;
 
-      if (now.getFullYear() > writeDay.getFullYear()) {
-        minus = now.getFullYear() - writeDay.getFullYear();
-        return minus + "년 전";
-      } else if (now.getMonth() > writeDay.getMonth()) {
-        //년도가 같을 경우 달을 비교해서 출력
-        minus = now.getMonth() - writeDay.getMonth();
-        return minus + "달 전";
-      } else if (now.getDate() > writeDay.getDate()) {
-        //같은 달일 경우 일을 계산
-        minus = now.getDate() - writeDay.getDate();
-        return minus + "일 전";
-      } else if (now.getDate() == writeDay.getDate()) {
-        //당일인 경우에는
-        var nowTime = now.getTime();
-        var writeTime = writeDay.getTime();
-
-        if (nowTime > writeTime) {
-          //시간을 비교
-          sec = parseInt(nowTime - writeTime) / 1000;
-          day = parseInt(sec / 60 / 60 / 24);
-          sec = sec - day * 60 * 60 * 24;
-          hour = parseInt(sec / 60 / 60);
-          sec = sec - hour * 60 * 60;
-          min = parseInt(sec / 60);
-          sec = parseInt(sec - min * 60);
-
-          if (hour > 0) {
-            //몇시간전인지
-            return hour + "시간 전";
-          } else if (min > 0) {
-            //몇분전인지
-            return min + "분 전";
-          } else if (sec > 0) {
-            //몇초전인지 계산
-            return sec + "초 전";
-          }
-        }
-      }
+      var content = this.content;
+      this.content = '';
+      axios.post('write/comment/' + this.post.id, {
+        _token: this.laravel.csrfToken,
+        reply: this.reply,
+        content: content
+      }).then(function (res) {
+        _this3.load_comment();
+      })["catch"](function (res) {
+        alert('댓글 작성에 실패했습니다.');
+      });
     }
   }
 });
@@ -6522,28 +6549,6 @@ __webpack_require__.r(__webpack_exports__);
 
 })));
 //# sourceMappingURL=bootstrap.js.map
-
-
-/***/ }),
-
-/***/ "./node_modules/is-buffer/index.js":
-/*!*****************************************!*\
-  !*** ./node_modules/is-buffer/index.js ***!
-  \*****************************************/
-/*! no static exports found */
-/***/ (function(module, exports) {
-
-/*!
- * Determine if an object is a Buffer
- *
- * @author   Feross Aboukhadijeh <https://feross.org>
- * @license  MIT
- */
-
-module.exports = function isBuffer (obj) {
-  return obj != null && obj.constructor != null &&
-    typeof obj.constructor.isBuffer === 'function' && obj.constructor.isBuffer(obj)
-}
 
 
 /***/ }),
@@ -37387,81 +37392,32 @@ var render = function() {
   var _vm = this
   var _h = _vm.$createElement
   var _c = _vm._self._c || _h
-  return _c(
-    "div",
-    { staticClass: "comments" },
-    _vm._l(_vm.comments, function(comment, i) {
-      return _c("div", { key: i, staticClass: "comment" }, [
-        _c("div", { staticClass: "top" }, [
-          _c("a", {
-            staticClass: "profile",
-            staticStyle: { "background-image": "url(/img/2.jpg)" },
-            attrs: { href: "/profile/tarcle1" }
-          }),
-          _vm._v(" "),
-          _c(
-            "a",
-            { staticClass: "name", attrs: { href: "/profile/tarcle1" } },
-            [_vm._v(_vm._s(comment.name))]
-          ),
-          _vm._v(" "),
-          _c("span", { staticClass: "timestamp" })
-        ]),
-        _vm._v(" "),
-        _c("div", { staticClass: "content" }, [_vm._v(_vm._s(comment.content))])
+  return _c("div", { staticClass: "comment" }, [
+    _c("div", { staticClass: "top" }, [
+      _c("a", {
+        staticClass: "profile",
+        style: "background-image: url(/img/" + _vm.comment.writer + ".jpg)",
+        attrs: { href: "/profile/userid" }
+      }),
+      _vm._v(" "),
+      _c(
+        "a",
+        {
+          staticClass: "name",
+          attrs: { href: "/profile/" + _vm.comment.userid }
+        },
+        [_vm._v(_vm._s(_vm.comment.name))]
+      ),
+      _vm._v(" "),
+      _c("span", { staticClass: "timestamp" }, [
+        _vm._v(_vm._s(_vm.display_datetime(_vm.comment.created_at)))
       ])
-    }),
-    0
-  )
+    ]),
+    _vm._v(" "),
+    _c("div", { staticClass: "content" }, [_vm._v(_vm._s(_vm.comment.comment))])
+  ])
 }
 var staticRenderFns = []
-render._withStripped = true
-
-
-
-/***/ }),
-
-/***/ "./node_modules/vue-loader/lib/loaders/templateLoader.js?!./node_modules/vue-loader/lib/index.js?!./resources/js/components/ExampleComponent.vue?vue&type=template&id=299e239e&":
-/*!*******************************************************************************************************************************************************************************************************************!*\
-  !*** ./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/vue-loader/lib??vue-loader-options!./resources/js/components/ExampleComponent.vue?vue&type=template&id=299e239e& ***!
-  \*******************************************************************************************************************************************************************************************************************/
-/*! exports provided: render, staticRenderFns */
-/***/ (function(module, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "render", function() { return render; });
-/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "staticRenderFns", function() { return staticRenderFns; });
-var render = function() {
-  var _vm = this
-  var _h = _vm.$createElement
-  var _c = _vm._self._c || _h
-  return _vm._m(0)
-}
-var staticRenderFns = [
-  function() {
-    var _vm = this
-    var _h = _vm.$createElement
-    var _c = _vm._self._c || _h
-    return _c("div", { staticClass: "container" }, [
-      _c("div", { staticClass: "row justify-content-center" }, [
-        _c("div", { staticClass: "col-md-8" }, [
-          _c("div", { staticClass: "card" }, [
-            _c("div", { staticClass: "card-header" }, [
-              _vm._v("Example Component")
-            ]),
-            _vm._v(" "),
-            _c("div", { staticClass: "card-body" }, [
-              _vm._v(
-                "\n                    I'm an example component.\n                "
-              )
-            ])
-          ])
-        ])
-      ])
-    ])
-  }
-]
 render._withStripped = true
 
 
@@ -37483,88 +37439,120 @@ var render = function() {
   var _vm = this
   var _h = _vm.$createElement
   var _c = _vm._self._c || _h
-  return _c(
-    "div",
-    { staticClass: "post" },
-    [
-      _c("div", { staticClass: "top" }, [
-        _c("a", {
-          staticClass: "profile",
-          style: {
-            "background-image": "url(/img/" + _vm.post.writer + ".jpg)"
-          },
-          attrs: { href: "/profile/" + _vm.post.userid }
-        }),
-        _vm._v(" "),
-        _c(
-          "a",
-          {
-            staticClass: "name",
-            attrs: { href: "/profile/" + _vm.post.userid }
-          },
-          [_vm._v(_vm._s(_vm.post.name))]
-        )
+  return _c("div", { staticClass: "post" }, [
+    _c("div", { staticClass: "top" }, [
+      _c("a", {
+        staticClass: "profile",
+        style: { "background-image": "url(/img/" + _vm.post.writer + ".jpg)" },
+        attrs: { href: "/profile/" + _vm.post.userid }
+      }),
+      _vm._v(" "),
+      _c(
+        "a",
+        { staticClass: "name", attrs: { href: "/profile/" + _vm.post.userid } },
+        [_vm._v(_vm._s(_vm.post.name))]
+      )
+    ]),
+    _vm._v(" "),
+    _c("div", { staticClass: "meta" }, [
+      _c("span", { staticClass: "timestamp" }, [
+        _vm._v(_vm._s(_vm.display_datetime(_vm.post.created_at)))
+      ])
+    ]),
+    _vm._v(" "),
+    _c("div", { staticClass: "content" }, [_vm._v(_vm._s(_vm.post.body))]),
+    _vm._v(" "),
+    _c("div", { staticClass: "btn" }, [
+      _c("button", { staticClass: "like", class: { on: 0 } }, [
+        _vm._v("좋아요")
       ]),
       _vm._v(" "),
-      _c("div", { staticClass: "meta" }, [
-        _c("span", { staticClass: "timestamp" }, [
-          _vm._v(_vm._s(_vm.display_datetime(_vm.post.created_at)))
-        ])
-      ]),
-      _vm._v(" "),
-      _c("div", { staticClass: "content" }, [_vm._v(_vm._s(_vm.post.body))]),
-      _vm._v(" "),
-      _c("div", { staticClass: "btn" }, [
-        _c("button", { staticClass: "like" }, [_vm._v("좋아요")]),
-        _vm._v(" "),
-        _c(
-          "button",
-          {
-            staticClass: "comment",
-            on: {
-              click: function($event) {
-                return _vm.load_comment(_vm.post.id)
-              }
+      _c(
+        "button",
+        {
+          staticClass: "comment",
+          on: {
+            click: function($event) {
+              return _vm.load_comment(_vm.post.id)
             }
+          }
+        },
+        [_vm._v("댓글 " + _vm._s(_vm.comment_count) + "개")]
+      ),
+      _vm._v(" "),
+      _c("button", { staticClass: "share" }, [_vm._v("공유")])
+    ]),
+    _vm._v(" "),
+    _vm.loading == 2
+      ? _c(
+          "div",
+          { staticClass: "comments" },
+          _vm._l(_vm.comments, function(comment, i) {
+            return _c("comment", {
+              key: i,
+              tag: "div",
+              attrs: { comment: comment }
+            })
+          }),
+          1
+        )
+      : _vm.loading == 1
+      ? _c("div", { staticClass: "comments" }, [
+          _c("div", { staticStyle: { "text-align": "center" } }, [
+            _vm._v("불러오는 중")
+          ])
+        ])
+      : _vm._e(),
+    _vm._v(" "),
+    _vm.loading > 0
+      ? _c(
+          "div",
+          {
+            staticClass: "comment-write",
+            attrs: { action: "/write/comment/" + _vm.post.id, method: "POST" }
           },
           [
-            _vm._v(
-              "댓글 " +
-                _vm._s(
-                  _vm.laravel.comment_count[_vm.post.id]
-                    ? _vm.laravel.comment_count[_vm.post.id]
-                    : 0
-                ) +
-                "개"
-            )
+            _c("input", {
+              attrs: { type: "hidden", name: "_token" },
+              domProps: { value: _vm.laravel.csrfToken }
+            }),
+            _vm._v(" "),
+            _c("input", {
+              attrs: { type: "hidden", name: "reply" },
+              domProps: { value: _vm.reply }
+            }),
+            _vm._v(" "),
+            _c("textarea", {
+              directives: [
+                {
+                  name: "model",
+                  rawName: "v-model",
+                  value: _vm.content,
+                  expression: "content"
+                }
+              ],
+              attrs: { name: "content", placeholder: "댓글을 달아보세요." },
+              domProps: { value: _vm.content },
+              on: {
+                keypress: function(e) {
+                  return _vm.keypress_button(e, _vm.write_comment)
+                },
+                input: function($event) {
+                  if ($event.target.composing) {
+                    return
+                  }
+                  _vm.content = $event.target.value
+                }
+              }
+            }),
+            _vm._v(" "),
+            _c("button", { on: { click: _vm.write_comment } }, [
+              _vm._v("댓글 달기")
+            ])
           ]
-        ),
-        _vm._v(" "),
-        _c("button", { staticClass: "share" }, [_vm._v("공유")])
-      ]),
-      _vm._v(" "),
-      _c("comments", { tag: "div", attrs: { post: _vm.post } }),
-      _vm._v(" "),
-      _vm.comment_on
-        ? _c(
-            "form",
-            {
-              staticClass: "comment-write",
-              attrs: { action: "/write/comment/" + _vm.post.id }
-            },
-            [
-              _vm._v("\n        " + _vm._s(_vm.laravel.csrf) + "\n        "),
-              _c("textarea", {
-                attrs: { name: "comment", placeholder: "댓글을 달아보세요." }
-              }),
-              _vm._v(" "),
-              _c("button", { attrs: { type: "submit" } }, [_vm._v("댓글 달기")])
-            ]
-          )
-        : _vm._e()
-    ],
-    1
-  )
+        )
+      : _vm._e()
+  ])
 }
 var staticRenderFns = []
 render._withStripped = true
@@ -49745,6 +49733,8 @@ module.exports = function(module) {
 __webpack_require__(/*! ./bootstrap */ "./resources/js/bootstrap.js");
 
 window.Vue = __webpack_require__(/*! vue */ "./node_modules/vue/dist/vue.common.js");
+
+__webpack_require__(/*! ./common */ "./resources/js/common.js");
 /**
  * The following block of code may be used to automatically register your
  * Vue components. It will recursively scan this directory for the Vue
@@ -49755,11 +49745,11 @@ window.Vue = __webpack_require__(/*! vue */ "./node_modules/vue/dist/vue.common.
 // const files = require.context('./', true, /\.vue$/i)
 // files.keys().map(key => Vue.component(key.split('/').pop().split('.')[0], files(key).default))
 
-Vue.component('example-component', __webpack_require__(/*! ./components/ExampleComponent.vue */ "./resources/js/components/ExampleComponent.vue")["default"]);
+
 Vue.component('post', __webpack_require__(/*! ./components/Post.vue */ "./resources/js/components/Post.vue")["default"]);
-Vue.component('comments', __webpack_require__(/*! ./components/Comment.vue */ "./resources/js/components/Comment.vue")["default"]);
+Vue.component('comment', __webpack_require__(/*! ./components/Comment.vue */ "./resources/js/components/Comment.vue")["default"]);
 /**
- * Next, we will create a fresh Vue application instance and attach it to
+ * Next, we will create a fresh Vue application instance and attach it to   
  * the page. Then, you may begin adding components to this application
  * or customize the JavaScript scaffolding to fit your unique needs.
  */
@@ -49767,7 +49757,41 @@ Vue.component('comments', __webpack_require__(/*! ./components/Comment.vue */ ".
 var app = new Vue({
   el: '#app',
   data: {
-    posts: laravel.posts
+    laravel: laravel,
+    loading: false,
+    posts: [],
+    comment_count: [],
+    input_search: ''
+  },
+  mounted: function mounted() {
+    params = location.href.split('/').slice(3);
+
+    if (params[0] == '') {
+      this.load_posts();
+      _this = this;
+      $(window).scroll(function () {
+        if (!this.loading && this.scrollY + document.body.clientHeight >= $("body").height() - 200) {
+          this.loading = true;
+
+          _this.load_posts();
+        }
+      });
+    }
+  },
+  methods: {
+    search: function search() {
+      location.href = '/search/' + this.input_search;
+    },
+    load_posts: function load_posts() {
+      var _this2 = this;
+
+      axios.post('/load/posts/' + this.posts.length).then(function (res) {
+        _this2.posts = _this2.posts.concat(res.data);
+        _this2.loading = false;
+      })["catch"](function (res) {
+        alert('게시물을 불러오는 중 오류가 발생했습니다.');
+      });
+    }
   }
 });
 
@@ -49815,6 +49839,53 @@ window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 //     cluster: process.env.MIX_PUSHER_APP_CLUSTER,
 //     encrypted: true
 // });
+
+/***/ }),
+
+/***/ "./resources/js/common.js":
+/*!********************************!*\
+  !*** ./resources/js/common.js ***!
+  \********************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+Vue.mixin({
+  methods: {
+    display_datetime: function display_datetime(data) {
+      if (!data) return '';
+      diff = new Date() - new Date(data);
+      s = 1000; //1초
+
+      m = s * 60; //1분 = 60초
+
+      h = m * 60; //1시간 = 60분
+
+      d = h * 24; //1일 = 24시간
+
+      y = d * 365; //1년 = 1일 * 10일
+
+      if (diff < m) {
+        result = Math.floor(diff / s) + '초 전';
+      } else if (h > diff && diff >= m) {
+        result = Math.floor(diff / m) + '분 전';
+      } else if (d > diff && diff >= h) {
+        result = Math.floor(diff / h) + '시간 전';
+      } else if (y > diff && diff >= d) {
+        result = Math.floor(diff / d) + '일 전';
+      } else {
+        result = Math.floor(diff / y) + '년 전';
+      }
+
+      return result;
+    },
+    keypress_button: function keypress_button(e, func) {
+      if (e.keyCode == 13) {
+        e.preventDefault();
+        func();
+      }
+    }
+  }
+});
 
 /***/ }),
 
@@ -49882,75 +49953,6 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony reexport (safe) */ __webpack_require__.d(__webpack_exports__, "render", function() { return _node_modules_vue_loader_lib_loaders_templateLoader_js_vue_loader_options_node_modules_vue_loader_lib_index_js_vue_loader_options_Comment_vue_vue_type_template_id_54ded044___WEBPACK_IMPORTED_MODULE_0__["render"]; });
 
 /* harmony reexport (safe) */ __webpack_require__.d(__webpack_exports__, "staticRenderFns", function() { return _node_modules_vue_loader_lib_loaders_templateLoader_js_vue_loader_options_node_modules_vue_loader_lib_index_js_vue_loader_options_Comment_vue_vue_type_template_id_54ded044___WEBPACK_IMPORTED_MODULE_0__["staticRenderFns"]; });
-
-
-
-/***/ }),
-
-/***/ "./resources/js/components/ExampleComponent.vue":
-/*!******************************************************!*\
-  !*** ./resources/js/components/ExampleComponent.vue ***!
-  \******************************************************/
-/*! exports provided: default */
-/***/ (function(module, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-/* harmony import */ var _ExampleComponent_vue_vue_type_template_id_299e239e___WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./ExampleComponent.vue?vue&type=template&id=299e239e& */ "./resources/js/components/ExampleComponent.vue?vue&type=template&id=299e239e&");
-/* harmony import */ var _ExampleComponent_vue_vue_type_script_lang_js___WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./ExampleComponent.vue?vue&type=script&lang=js& */ "./resources/js/components/ExampleComponent.vue?vue&type=script&lang=js&");
-/* empty/unused harmony star reexport *//* harmony import */ var _node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../../../node_modules/vue-loader/lib/runtime/componentNormalizer.js */ "./node_modules/vue-loader/lib/runtime/componentNormalizer.js");
-
-
-
-
-
-/* normalize component */
-
-var component = Object(_node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_2__["default"])(
-  _ExampleComponent_vue_vue_type_script_lang_js___WEBPACK_IMPORTED_MODULE_1__["default"],
-  _ExampleComponent_vue_vue_type_template_id_299e239e___WEBPACK_IMPORTED_MODULE_0__["render"],
-  _ExampleComponent_vue_vue_type_template_id_299e239e___WEBPACK_IMPORTED_MODULE_0__["staticRenderFns"],
-  false,
-  null,
-  null,
-  null
-  
-)
-
-/* hot reload */
-if (false) { var api; }
-component.options.__file = "resources/js/components/ExampleComponent.vue"
-/* harmony default export */ __webpack_exports__["default"] = (component.exports);
-
-/***/ }),
-
-/***/ "./resources/js/components/ExampleComponent.vue?vue&type=script&lang=js&":
-/*!*******************************************************************************!*\
-  !*** ./resources/js/components/ExampleComponent.vue?vue&type=script&lang=js& ***!
-  \*******************************************************************************/
-/*! exports provided: default */
-/***/ (function(module, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-/* harmony import */ var _node_modules_babel_loader_lib_index_js_ref_4_0_node_modules_vue_loader_lib_index_js_vue_loader_options_ExampleComponent_vue_vue_type_script_lang_js___WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib??ref--4-0!../../../node_modules/vue-loader/lib??vue-loader-options!./ExampleComponent.vue?vue&type=script&lang=js& */ "./node_modules/babel-loader/lib/index.js?!./node_modules/vue-loader/lib/index.js?!./resources/js/components/ExampleComponent.vue?vue&type=script&lang=js&");
-/* empty/unused harmony star reexport */ /* harmony default export */ __webpack_exports__["default"] = (_node_modules_babel_loader_lib_index_js_ref_4_0_node_modules_vue_loader_lib_index_js_vue_loader_options_ExampleComponent_vue_vue_type_script_lang_js___WEBPACK_IMPORTED_MODULE_0__["default"]); 
-
-/***/ }),
-
-/***/ "./resources/js/components/ExampleComponent.vue?vue&type=template&id=299e239e&":
-/*!*************************************************************************************!*\
-  !*** ./resources/js/components/ExampleComponent.vue?vue&type=template&id=299e239e& ***!
-  \*************************************************************************************/
-/*! exports provided: render, staticRenderFns */
-/***/ (function(module, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-/* harmony import */ var _node_modules_vue_loader_lib_loaders_templateLoader_js_vue_loader_options_node_modules_vue_loader_lib_index_js_vue_loader_options_ExampleComponent_vue_vue_type_template_id_299e239e___WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!../../../node_modules/vue-loader/lib??vue-loader-options!./ExampleComponent.vue?vue&type=template&id=299e239e& */ "./node_modules/vue-loader/lib/loaders/templateLoader.js?!./node_modules/vue-loader/lib/index.js?!./resources/js/components/ExampleComponent.vue?vue&type=template&id=299e239e&");
-/* harmony reexport (safe) */ __webpack_require__.d(__webpack_exports__, "render", function() { return _node_modules_vue_loader_lib_loaders_templateLoader_js_vue_loader_options_node_modules_vue_loader_lib_index_js_vue_loader_options_ExampleComponent_vue_vue_type_template_id_299e239e___WEBPACK_IMPORTED_MODULE_0__["render"]; });
-
-/* harmony reexport (safe) */ __webpack_require__.d(__webpack_exports__, "staticRenderFns", function() { return _node_modules_vue_loader_lib_loaders_templateLoader_js_vue_loader_options_node_modules_vue_loader_lib_index_js_vue_loader_options_ExampleComponent_vue_vue_type_template_id_299e239e___WEBPACK_IMPORTED_MODULE_0__["staticRenderFns"]; });
 
 
 
